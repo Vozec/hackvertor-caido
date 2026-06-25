@@ -1,0 +1,9 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "lib": ["ESNext"],
+    "types": ["@caido/sdk-backend", "node"],
+    "rootDir": "src"
+  },
+  "include": ["src"]
+}

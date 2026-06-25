@@ -1,0 +1,64 @@
+import { uuidFrom } from "./common.mjs";
+
+/**
+ * Build a Caido `convert` workflow definition: convert-start -> code-js -> convert-end.
+ * The code-js `code` input is left empty; build.mjs inlines the bundled JS.
+ */
+export function convertDefinition({ id, name, description }) {
+  return {
+    description: description ?? name,
+    edition: 2,
+    id: uuidFrom(id),
+    kind: "convert",
+    name,
+    graph: {
+      edges: [
+        {
+          source: { exec_alias: "exec", node_id: 0 },
+          target: { exec_alias: "exec", node_id: 2 },
+        },
+        {
+          source: { exec_alias: "exec", node_id: 2 },
+          target: { exec_alias: "exec", node_id: 1 },
+        },
+      ],
+      nodes: [
+        {
+          alias: "convert_start",
+          definition_id: "caido/convert-start",
+          display: { x: -20, y: 0 },
+          id: 0,
+          inputs: [],
+          name: "Convert Start",
+          version: "0.1.0",
+        },
+        {
+          alias: "javascript",
+          definition_id: "caido/code-js",
+          display: { x: -20, y: 110 },
+          id: 2,
+          inputs: [
+            {
+              alias: "data",
+              value: { data: "$convert_start.data", kind: "ref" },
+            },
+            { alias: "code", value: { data: "", kind: "string" } },
+          ],
+          name: "Javascript",
+          version: "0.1.0",
+        },
+        {
+          alias: "convert_end",
+          definition_id: "caido/convert-end",
+          display: { x: -20, y: 230 },
+          id: 1,
+          inputs: [
+            { alias: "data", value: { data: "$javascript.data", kind: "ref" } },
+          ],
+          name: "Convert End",
+          version: "0.1.0",
+        },
+      ],
+    },
+  };
+}
