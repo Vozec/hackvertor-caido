@@ -29,9 +29,15 @@ export function useHv() {
 
   async function ensureInit() {
     if (initialised) return;
-    initialised = true;
     try {
       tags.value = (await s.backend.listTags()) as TagSummary[];
+      // reflect the backend's real auto-convert state (avoids UI/backend drift)
+      try {
+        autoConvert.value = await s.backend.getAutoConvert();
+      } catch {
+        /* older backend without getAutoConvert — keep default */
+      }
+      initialised = true; // only mark done on success, so a failure can retry
     } catch (e) {
       s.window.showToast("Failed to load tags: " + String(e), {
         variant: "error",
@@ -39,13 +45,20 @@ export function useHv() {
     }
   }
 
+  // Monotonic token: only the newest convert() may write pageOutput, so
+  // out-of-order RPC responses never clobber fresh output.
+  let convertSeq = 0;
   async function convert() {
+    const seq = ++convertSeq;
     busy.value = true;
     try {
       const res = await s.backend.convert(pageInput.value);
+      if (seq !== convertSeq) return; // a newer request superseded this one
       pageOutput.value = res.kind === "Ok" ? res.value : `[error] ${res.error}`;
+    } catch (e) {
+      if (seq === convertSeq) pageOutput.value = `[error] ${String(e)}`;
     } finally {
-      busy.value = false;
+      if (seq === convertSeq) busy.value = false;
     }
   }
 
@@ -72,11 +85,16 @@ export function useHv() {
   }
 
   async function toggleAuto(value: boolean) {
+    const prev = autoConvert.value;
     autoConvert.value = value;
     try {
       await s.backend.setAutoConvert(value);
-    } catch {
-      /* ignore */
+    } catch (e) {
+      // revert so the UI never claims a state the backend didn't accept
+      autoConvert.value = prev;
+      s.window.showToast("Failed to change auto-convert: " + String(e), {
+        variant: "error",
+      });
     }
   }
 

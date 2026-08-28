@@ -27,29 +27,36 @@ export function resolveTag(
   return registry.get(name) ?? registry.get(stripNumber(name));
 }
 
-async function evalNode(node: Node, ctx: EvalContext): Promise<string> {
+async function evalNode(
+  node: Node,
+  ctx: EvalContext,
+  depth = 0,
+): Promise<string> {
   if (node.type === "text") return node.value;
   const tag = node as TagNode;
+
+  // Structural depth guard: past MAX_DEPTH, stop recursing and render the node's
+  // open marker literally. Prevents a stack overflow on pathologically nested
+  // (e.g. many unclosed) tags reachable from the auto-convert path.
+  if (depth > MAX_DEPTH) return tag.rawOpen;
 
   // Unclosed paired tag -> render its open marker + children literally.
   if (!tag.selfClosing && !tag.closed) {
     let inner = "";
-    for (const child of tag.children) inner += await evalNode(child, ctx);
+    for (const child of tag.children) inner += await evalNode(child, ctx, depth + 1);
     return tag.rawOpen + inner;
   }
 
   // Evaluate children first (innermost-first semantics).
   let input = "";
-  for (const child of tag.children) input += await evalNode(child, ctx);
+  for (const child of tag.children) input += await evalNode(child, ctx, depth + 1);
 
   const def = resolveTag(ctx.registry, tag.name);
   if (!def) {
     // Unknown tag -> literal passthrough (weak convert).
     if (tag.selfClosing) return tag.rawOpen;
-    return tag.rawOpen + input + `</@${tag.name}>`;
+    return tag.rawOpen + input + (tag.rawClose ?? `</@${tag.name}>`);
   }
-
-  if (ctx.depth > MAX_DEPTH) return input;
 
   // Merge declared-default args with provided args.
   const args: ArgValue[] = def.args.map((a, i) =>
@@ -144,22 +151,22 @@ export function hasTags(input: string): boolean {
   return input.includes("<@");
 }
 
-function evalNodeSync(node: Node, ctx: EvalContext): string {
+function evalNodeSync(node: Node, ctx: EvalContext, depth = 0): string {
   if (node.type === "text") return node.value;
   const tag = node as TagNode;
+  if (depth > MAX_DEPTH) return tag.rawOpen;
   if (!tag.selfClosing && !tag.closed) {
     let inner = "";
-    for (const child of tag.children) inner += evalNodeSync(child, ctx);
+    for (const child of tag.children) inner += evalNodeSync(child, ctx, depth + 1);
     return tag.rawOpen + inner;
   }
   let input = "";
-  for (const child of tag.children) input += evalNodeSync(child, ctx);
+  for (const child of tag.children) input += evalNodeSync(child, ctx, depth + 1);
   const def = resolveTag(ctx.registry, tag.name);
   if (!def) {
     if (tag.selfClosing) return tag.rawOpen;
-    return tag.rawOpen + input + `</@${tag.name}>`;
+    return tag.rawOpen + input + (tag.rawClose ?? `</@${tag.name}>`);
   }
-  if (ctx.depth > MAX_DEPTH) return input;
   const args: ArgValue[] = def.args.map((a, i) =>
     tag.args[i] !== undefined ? tag.args[i]! : a.default,
   );

@@ -1,38 +1,42 @@
-import { utf8ToBytes } from "../codec";
+import { bytesToLatin1, bytesToUtf8, latin1ToBytes, utf8ToBytes } from "../codec";
 import type { TagDef } from "../types";
 import { arg, tag } from "./define";
 
 function rotN(s: string, n: number): string {
   return s.replace(/[a-zA-Z]/g, (c) => {
     const base = c <= "Z" ? 65 : 97;
-    return String.fromCharCode(((c.charCodeAt(0) - base + n) % 26) + base);
+    // normalize so negative n rotates correctly ("a" rot -1 -> "z")
+    const y = (((c.charCodeAt(0) - base + n) % 26) + 26) % 26;
+    return String.fromCharCode(y + base);
   });
 }
 
-function xor(s: string, key: string): string {
+/**
+ * XOR with a repeating key. Byte-exact and reversible for arbitrary Unicode text:
+ * encrypt maps text -> UTF-8 bytes -> XOR -> latin1 byte-string; decrypt reverses
+ * (latin1 byte-string -> XOR -> UTF-8 text). ASCII is unaffected.
+ */
+function xor(s: string, key: string, decrypt: boolean): string {
   if (!key) return s;
   const kb = utf8ToBytes(key);
-  const sb = utf8ToBytes(s);
-  let out = "";
-  for (let i = 0; i < sb.length; i++)
-    out += String.fromCharCode(sb[i]! ^ kb[i % kb.length]!);
-  return out;
+  const sb = decrypt ? latin1ToBytes(s) : utf8ToBytes(s);
+  const out = new Uint8Array(sb.length);
+  for (let i = 0; i < sb.length; i++) out[i] = sb[i]! ^ kb[i % kb.length]!;
+  return decrypt ? bytesToUtf8(out) : bytesToLatin1(out);
 }
 
 function affine(s: string, a: number, b: number, decrypt: boolean): string {
-  const modInverse = (x: number, m: number) => {
+  const modInverse = (x: number, m: number): number => {
     x = ((x % m) + m) % m;
     for (let i = 1; i < m; i++) if ((x * i) % m === 1) return i;
-    return 1;
+    throw new Error(`'a' (${a}) must be coprime with 26`);
   };
-  const aInv = modInverse(a, 26);
+  const aInv = decrypt ? modInverse(a, 26) : 0;
   return s.replace(/[a-zA-Z]/g, (c) => {
     const base = c <= "Z" ? 65 : 97;
     const x = c.charCodeAt(0) - base;
-    const y = decrypt
-      ? (aInv * (x - b + 26 * 100)) % 26
-      : (a * x + b) % 26;
-    return String.fromCharCode(((y % 26) + 26) % 26 + base);
+    const y = decrypt ? aInv * (x - b) : a * x + b;
+    return String.fromCharCode((((y % 26) + 26) % 26) + base);
   });
 }
 
@@ -59,7 +63,8 @@ function railFenceEncrypt(s: string, rails: number): string {
 
 function railFenceDecrypt(s: string, rails: number): string {
   if (rails < 2) return s;
-  const len = s.length;
+  const chars = Array.from(s);
+  const len = chars.length;
   const pattern: number[] = [];
   let r = 0;
   let dir = 1;
@@ -81,7 +86,7 @@ function railFenceDecrypt(s: string, rails: number): string {
   let out = "";
   for (let i = 0; i < len; i++) {
     const row = pattern[i]!;
-    out += s[offsets[row]! + idx[row]!];
+    out += chars[offsets[row]! + idx[row]!];
     idx[row]++;
   }
   return out;
@@ -91,11 +96,11 @@ export const cipherTags: TagDef[] = [
   tag("Encrypt", "rotN", "Caesar/ROT-N cipher", (s, a) => rotN(s, Number(a[0])), {
     args: [arg("n", "number", 13)],
   }),
-  tag("Encrypt", "xor", "XOR with a repeating key", (s, a) => xor(s, String(a[0])), {
+  tag("Encrypt", "xor", "XOR with a repeating key", (s, a) => xor(s, String(a[0]), false), {
     args: [arg("key", "string", "")],
   }),
   tag("Decrypt", "xor_decrypt", "XOR with a repeating key", (s, a) =>
-    xor(s, String(a[0])),
+    xor(s, String(a[0]), true),
     { args: [arg("key", "string", "")] },
   ),
   tag(

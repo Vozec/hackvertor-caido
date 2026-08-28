@@ -35,8 +35,9 @@ let merged = 0;
 for (const entry of entries) {
   const srcDef = path.join(wfDist, entry.id, "definition.json");
   if (!fs.existsSync(srcDef)) {
-    console.warn(`[!] missing ${srcDef}, skipping`);
-    continue;
+    throw new Error(
+      `missing workflow definition ${srcDef} — aborting so a partial package is never shipped`,
+    );
   }
   const outDir = path.join(pkgDir, entry.id);
   fs.mkdirSync(outDir, { recursive: true });
@@ -53,13 +54,15 @@ for (const entry of entries) {
 fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
 console.log(`\n[*] Merged ${merged} workflow plugins into manifest (${manifest.plugins.length} total)`);
 
-// 4. re-zip
+// 4. re-zip — deterministic: sorted entries + fixed timestamps so identical
+//    inputs produce a byte-identical package (reproducible builds).
+const ZIP_DATE = new Date(0);
 function addDir(zip, dir, base = "") {
-  for (const name of fs.readdirSync(dir)) {
+  for (const name of fs.readdirSync(dir).sort()) {
     const full = path.join(dir, name);
     const rel = base ? `${base}/${name}` : name;
     if (fs.statSync(full).isDirectory()) addDir(zip, full, rel);
-    else zip.file(rel, fs.readFileSync(full));
+    else zip.file(rel, fs.readFileSync(full), { date: ZIP_DATE });
   }
 }
 

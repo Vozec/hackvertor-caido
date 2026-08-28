@@ -3,6 +3,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import os from "os";
 import fs from "fs";
+import { createHash } from "crypto";
 
 export const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const pkgRoot = path.join(__dirname, "..");
@@ -49,17 +50,13 @@ export function slugify(name) {
     .replace(/[-_]+$/g, "");
 }
 
-/** Deterministic UUID-v4-shaped string derived from a seed (no RNG needed). */
+/**
+ * Deterministic UUID-v4-shaped string derived from a seed. Uses a full SHA-1 of
+ * the seed so distinct seeds never collide (a weak rolling hash previously mapped
+ * several slugs onto the same UUID, shipping broken duplicate workflows).
+ */
 export function uuidFrom(seed) {
-  let h = 0x811c9dc5;
-  const bytes = [];
-  for (let i = 0; i < 32; i++) {
-    h ^= seed.charCodeAt(i % seed.length) + i * 131;
-    h = Math.imul(h, 0x01000193) >>> 0;
-    bytes.push(h & 0xff);
-  }
-  const hex = bytes.map((b) => b.toString(16).padStart(2, "0"));
-  const s = hex.join("");
+  const s = createHash("sha1").update(seed).digest("hex"); // 40 hex chars
   return (
     s.slice(0, 8) +
     "-" +

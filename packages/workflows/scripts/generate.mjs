@@ -12,6 +12,21 @@ import { convertDefinition } from "./definition-template.mjs";
 // Tags whose handler is async (need the backend) — skip in workflow nodes.
 const ASYNC_ONLY = new Set();
 
+// Tags that cannot work as a standalone convert workflow: they need live request
+// context or shared cross-node variable state that a single convert node can't
+// supply. They remain available in the combined "Hackvertor: Tags" workflow and
+// the backend RPC.
+const SKIP_STANDALONE = new Set([
+  "context_request",
+  "context_url",
+  "context_header",
+  "context_param",
+  "set",
+  "get",
+  "increment_var",
+  "decrement_var",
+]);
+
 const meta = await importBundled(path.join(pkgRoot, "src", "meta.ts"));
 const tags = meta.listTags();
 
@@ -33,7 +48,12 @@ export function run(input: BytesInput, sdk: SDK) {
 }
 
 function write(slug, name, description, script) {
-  if (usedSlugs.has(slug)) slug = slug + "-x";
+  // ensure a unique slug even for 3+ collisions (append -2, -3, …)
+  if (usedSlugs.has(slug)) {
+    let n = 2;
+    while (usedSlugs.has(`${slug}-${n}`)) n++;
+    slug = `${slug}-${n}`;
+  }
   usedSlugs.add(slug);
   const dir = path.join(generatedDir, slug);
   fs.mkdirSync(dir, { recursive: true });
@@ -48,7 +68,7 @@ function write(slug, name, description, script) {
 
 let count = 0;
 for (const t of tags) {
-  if (ASYNC_ONLY.has(t.name)) continue;
+  if (ASYNC_ONLY.has(t.name) || SKIP_STANDALONE.has(t.name)) continue;
   const slug = slugify("hv-" + t.name);
   const name = `${t.category}: ${t.name}`;
   const args = t.args.map((a) => a.default);

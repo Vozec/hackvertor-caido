@@ -27,6 +27,8 @@ export interface TagNode {
   closed: boolean;
   /** Raw open marker, used to render literally when the tag is unclosed/unknown. */
   rawOpen: string;
+  /** Raw close marker as it appeared in the source (set once matched). */
+  rawClose?: string;
   children: Node[];
 }
 
@@ -282,6 +284,7 @@ export function parse(input: string): Node[] {
         top().children.push({ type: "text", value: tok.raw });
       } else {
         stack[idx]!.closed = true;
+        stack[idx]!.rawClose = tok.raw;
         // anything above idx stays unclosed (rendered literally at eval)
         stack.length = idx;
       }
@@ -290,11 +293,21 @@ export function parse(input: string): Node[] {
   return root.children;
 }
 
-/** A close name matches an open name exactly, or matches its numbered base. */
+/**
+ * A close name matches an open name when they are identical, or when exactly one
+ * side carries an explicit `_N` number and the bases are equal (tolerant close).
+ * Two *different* explicit numbers never match, so `<@base64_1>…</@base64_0>`
+ * stays literal — matching Hackvertor's numbered-tag semantics.
+ */
 function nameMatches(openName: string, closeName: string): boolean {
   if (openName === closeName) return true;
-  // <@base64_0>...</@base64> or </@base64_0> tolerance: compare bases
-  return stripNumber(openName) === stripNumber(closeName);
+  const openBase = stripNumber(openName);
+  const closeBase = stripNumber(closeName);
+  if (openBase !== closeBase) return false;
+  const openNumbered = openBase !== openName;
+  const closeNumbered = closeBase !== closeName;
+  // both explicitly numbered but not identical -> no match
+  return !(openNumbered && closeNumbered);
 }
 
 export function stripNumber(name: string): string {
