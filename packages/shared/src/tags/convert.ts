@@ -1,4 +1,4 @@
-import { bytesToHex, hexToBytes, utf8ToBytes } from "../codec";
+import { bytesToHex, bytesToUtf8, hexToBytes, utf8ToBytes } from "../codec";
 import type { TagDef } from "../types";
 import { arg, tag } from "./define";
 
@@ -60,13 +60,17 @@ export const convertTags: TagDef[] = [
       .map((b) => b.toString(2).padStart(8, "0"))
       .join(" "),
   ),
-  tag("Convert", "bin2ascii", "Binary (space-separated) to ASCII", (s) =>
-    s
-      .trim()
+  tag("Convert", "bin2ascii", "Binary (space-separated) to ASCII", (s) => {
+    const t = s.trim();
+    if (!t) return "";
+    return t
       .split(/\s+/)
-      .map((b) => String.fromCharCode(parseInt(b, 2)))
-      .join(""),
-  ),
+      .map((b) => {
+        const n = parseInt(b, 2);
+        return isNaN(n) ? "" : String.fromCharCode(n);
+      })
+      .join("");
+  }),
   tag(
     "Convert",
     "ascii2hex",
@@ -74,9 +78,7 @@ export const convertTags: TagDef[] = [
     (s, a) => bytesToHex(utf8ToBytes(s), String(a[0] ?? "")),
     { args: [arg("separator", "string", " ")] },
   ),
-  tag("Convert", "hex2ascii", "Hex to ASCII", (s) =>
-    String.fromCharCode(...hexToBytes(s)),
-  ),
+  tag("Convert", "hex2ascii", "Hex to ASCII", (s) => bytesToUtf8(hexToBytes(s))),
   tag(
     "Convert",
     "ascii2reverse_hex",

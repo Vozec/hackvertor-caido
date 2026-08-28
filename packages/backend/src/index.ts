@@ -60,11 +60,41 @@ function setAutoConvert(_sdk: SDK, enabled: boolean): boolean {
   return autoConvertEnabled;
 }
 
+function getAutoConvert(_sdk: SDK): boolean {
+  return autoConvertEnabled;
+}
+
+/**
+ * Recompute the `Content-Length` header after the body was rewritten. Operates
+ * on the latin1-domain raw request (1 char = 1 byte). Only touches an existing
+ * header and never a chunked request. Returns the raw unchanged when it has no
+ * header/body split.
+ */
+function updateContentLength(raw: string): string {
+  const sepLen = 4;
+  let sep = raw.indexOf("\r\n\r\n");
+  let nlSep = "\r\n";
+  if (sep === -1) {
+    sep = raw.indexOf("\n\n");
+    if (sep === -1) return raw; // no body
+    nlSep = "\n";
+  }
+  const headEnd = sep + (nlSep === "\r\n" ? sepLen : 2);
+  const head = raw.slice(0, sep);
+  const body = raw.slice(headEnd);
+  if (/^transfer-encoding:\s*chunked/im.test(head)) return raw;
+  const clRe = /^(content-length:)([ \t]*)(\d+)/im;
+  if (!clRe.test(head)) return raw; // no CL header to update
+  const newHead = head.replace(clRe, (_m, k, ws) => `${k}${ws || " "}${body.length}`);
+  return newHead + nlSep + nlSep + body;
+}
+
 export type API = DefineAPI<{
   convert: typeof convert;
   applyTag: typeof applyTag;
   listTags: typeof listTags;
   setAutoConvert: typeof setAutoConvert;
+  getAutoConvert: typeof getAutoConvert;
 }>;
 
 export function init(sdk: SDK<API, BackendEvents>) {
@@ -72,6 +102,7 @@ export function init(sdk: SDK<API, BackendEvents>) {
   sdk.api.register("applyTag", applyTag);
   sdk.api.register("listTags", listTags);
   sdk.api.register("setAutoConvert", setAutoConvert);
+  sdk.api.register("getAutoConvert", getAutoConvert);
 
   // Auto-convert <@tag> in outgoing requests. Fires only for domains where the
   // user enabled "Upstream Plugins". Runs synchronously before send.
@@ -90,13 +121,17 @@ export function init(sdk: SDK<API, BackendEvents>) {
         request: { raw },
       });
       if (converted !== raw) {
-        request.setRaw(latin1ToBytes(converted));
+        const withCl = updateContentLength(converted);
+        request.setRaw(latin1ToBytes(withCl));
         sdk.console.log("[hackvertor] auto-converted tags in outgoing request");
+        // Caido honors the returned RequestSpec, NOT in-place mutation — the
+        // modified request must be returned to actually go on the wire.
+        return { request: request.toSpec() };
       }
     } catch (e) {
       sdk.console.log("[hackvertor] auto-convert error: " + String(e));
     }
-    // Mutated in place; nothing to override.
+    // No tags converted (or an error) -> leave the request untouched.
     return undefined;
   });
 

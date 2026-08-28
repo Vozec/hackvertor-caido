@@ -1,5 +1,10 @@
-import type { TagDef } from "../types";
+import type { ArgValue, TagDef } from "../types";
 import { arg, tag } from "./define";
+
+/** Coerce a tag arg to boolean without treating the string "false" as true. */
+function asBool(v: ArgValue | undefined): boolean {
+  return v === true || v === "true";
+}
 
 // Variables: <@set_NAME>value</@set_NAME> stores; <@get_NAME/> retrieves.
 // We expose generic set/get tags that take the variable name as an argument,
@@ -11,7 +16,7 @@ export const variableTags: TagDef[] = [
     "Store the input in a variable",
     (s, a, ctx) => {
       const name = String(a[0]);
-      const global = Boolean(a[1]);
+      const global = asBool(a[1]);
       if (global) ctx.globals.set(name, s);
       else ctx.vars.set(name, s);
       return s;
@@ -34,7 +39,7 @@ export const variableTags: TagDef[] = [
     "Increment a counter variable",
     (_s, a, ctx) => {
       const name = String(a[1]);
-      const global = Boolean(a[2]);
+      const global = asBool(a[2]);
       const store = global ? ctx.globals : ctx.vars;
       const cur = store.has(name) ? Number(store.get(name)) : Number(a[0]);
       const next = cur + 1;
@@ -56,7 +61,7 @@ export const variableTags: TagDef[] = [
     "Decrement a counter variable",
     (_s, a, ctx) => {
       const name = String(a[1]);
-      const global = Boolean(a[2]);
+      const global = asBool(a[2]);
       const store = global ? ctx.globals : ctx.vars;
       const cur = store.has(name) ? Number(store.get(name)) : Number(a[0]);
       const next = cur - 1;

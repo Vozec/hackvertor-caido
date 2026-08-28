@@ -4,12 +4,17 @@ import {
   base64ToBytes,
   base64UrlToBytes,
   bytesToUtf8,
-  hexToBytes,
 } from "../codec";
 import type { TagDef } from "../types";
 import { tag } from "./define";
 
 const dec = (b: Uint8Array) => bytesToUtf8(b);
+
+/** Safe fromCodePoint: returns undefined for out-of-range values (no throw). */
+function safeFromCodePoint(code: number): string | undefined {
+  if (isNaN(code) || code < 0 || code > 0x10ffff) return undefined;
+  return String.fromCodePoint(code);
+}
 
 const NAMED_REV: Record<string, string> = {
   amp: "&",
@@ -25,7 +30,7 @@ function decodeHtmlEntities(s: string): string {
     if (body[0] === "#") {
       const hex = body[1] === "x" || body[1] === "X";
       const code = parseInt(body.slice(hex ? 2 : 1), hex ? 16 : 10);
-      return isNaN(code) ? m : String.fromCodePoint(code);
+      return safeFromCodePoint(code) ?? m;
     }
     return NAMED_REV[body] ?? m;
   });
@@ -74,8 +79,8 @@ function decodeOctalEscapes(s: string): string {
 }
 
 function decodeCssEscapes(s: string): string {
-  return s.replace(/\\([0-9a-fA-F]{1,6})\s?/g, (_, h) =>
-    String.fromCodePoint(parseInt(h, 16)),
+  return s.replace(/\\([0-9a-fA-F]{1,6})\s?/g, (m, h) =>
+    safeFromCodePoint(parseInt(h, 16)) ?? m,
   );
 }
 
@@ -107,7 +112,7 @@ export const decodeTags: TagDef[] = [
   tag("Decode", "d_base58", "Base58 decode", (s) => dec(base58ToBytes(s))),
   tag("Decode", "d_url", "URL decode", (s) => urldecode(s)),
   tag("Decode", "d_burp_url", "URL decode (Burp-style)", (s) => urldecode(s)),
-  tag("Decode", "hex2ascii", "Hex to ASCII", (s) => dec(hexToBytes(s))),
+  // NOTE: `hex2ascii` lives in tags/convert.ts to avoid duplicate registry entries.
   tag("Decode", "d_html_entities", "Decode HTML entities", (s) =>
     decodeHtmlEntities(s),
   ),

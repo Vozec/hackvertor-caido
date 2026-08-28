@@ -102,7 +102,12 @@ export const mathTags: TagDef[] = [
     (s, a) =>
       s
         .split(String(a[0]))
-        .map((p) => p.padStart(Number(a[1]), "0"))
+        .map((p) => {
+          const width = Number(a[1]);
+          // pad the digits, keep any leading sign in front ("-5" -> "-005")
+          const m = /^([+-]?)(.*)$/.exec(p)!;
+          return m[1] + m[2]!.padStart(width - m[1]!.length, "0");
+        })
         .join(String(a[0])),
     { args: [arg("split", "string", ","), arg("amount", "number", 3)] },
   ),

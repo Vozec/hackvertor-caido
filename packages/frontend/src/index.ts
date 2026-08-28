@@ -2,7 +2,7 @@ import { listTags, type TagSummary } from "shared";
 
 import { defineApp } from "@/app";
 import type { FrontendSDK } from "@/plugins/sdk";
-import { pageInput } from "@/composables/state";
+import { pageInput, pageOutput } from "@/composables/state";
 
 import "@/styles/index.css";
 
@@ -144,6 +144,14 @@ export const init = (sdk: FrontendSDK) => {
         selection = sdk.window.getActiveEditor()?.getSelectedText() ?? "";
       pageInput.value = selection;
       sdk.navigation.goTo(PATH);
+      // Programmatic input assignment doesn't fire the page's @input handler, so
+      // run the conversion here and populate the output pane.
+      try {
+        const res = await sdk.backend.convert(selection);
+        pageOutput.value = res.kind === "Ok" ? res.value : `[error] ${res.error}`;
+      } catch (e) {
+        pageOutput.value = `[error] ${String(e)}`;
+      }
     },
   });
 

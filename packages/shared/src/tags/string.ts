@@ -24,16 +24,22 @@ export const stringTags: TagDef[] = [
       }
     return out;
   }),
-  tag("String", "from_charcode", "Char codes (space-separated) to string", (s) =>
-    s
-      .trim()
+  tag("String", "from_charcode", "Char codes (space-separated) to string", (s) => {
+    const t = s.trim();
+    if (!t) return "";
+    return t
       .split(/\s+/)
-      .map((n) => String.fromCharCode(parseInt(n, 10)))
-      .join(""),
-  ),
+      .map((n) => {
+        const code = parseInt(n, 10);
+        return isNaN(code) || code < 0 || code > 0x10ffff
+          ? ""
+          : String.fromCodePoint(code);
+      })
+      .join("");
+  }),
   tag("String", "to_charcode", "String to space-separated char codes", (s) =>
     Array.from(s)
-      .map((ch) => ch.charCodeAt(0))
+      .map((ch) => ch.codePointAt(0))
       .join(" "),
   ),
   tag("String", "space", "Insert a space", () => " ", { hasInput: false }),
@@ -76,7 +82,11 @@ export const stringTags: TagDef[] = [
     "String",
     "substring",
     "Substring from start to end",
-    (s, a) => s.substring(Number(a[0]), a[1] === -1 ? undefined : Number(a[1])),
+    (s, a) => {
+      const end = Number(a[1]);
+      // any negative end means "to the end of the string"
+      return s.substring(Number(a[0]), end < 0 ? undefined : end);
+    },
     { args: [arg("start", "number", 0), arg("end", "number", -1)] },
   ),
   tag(

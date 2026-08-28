@@ -24,7 +24,9 @@ const grouped = computed(() => {
 });
 
 function copyOutput() {
-  navigator.clipboard?.writeText(hv.output.value);
+  void navigator.clipboard?.writeText(hv.output.value).catch(() => {
+    /* clipboard blocked (insecure context / permissions) — ignore */
+  });
 }
 </script>
 

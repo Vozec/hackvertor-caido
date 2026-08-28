@@ -156,7 +156,7 @@ export function bytesToBase64Url(bytes: Uint8Array, pad = false): string {
   return b64encode(bytes, B64URL, pad);
 }
 export function base64UrlToBytes(str: string): Uint8Array {
-  return b64decode(str.replace(/-/g, "-").replace(/_/g, "_"), B64URL);
+  return b64decode(str, B64URL);
 }
 
 /* ----------------------------- Base32 ----------------------------- */

@@ -28,7 +28,11 @@ for (const slug of slugs) {
   );
   for (const node of jsNodes) {
     const scriptPath = path.join(srcDir, `${node.alias}.ts`);
-    if (!fs.existsSync(scriptPath)) continue;
+    if (!fs.existsSync(scriptPath)) {
+      throw new Error(
+        `workflow '${slug}' code-js node '${node.alias}' has no script at ${scriptPath}`,
+      );
+    }
     const code = await bundleToString(scriptPath);
     node.inputs = node.inputs.map((inp) =>
       inp.alias === "code"

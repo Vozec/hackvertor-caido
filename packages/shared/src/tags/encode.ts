@@ -71,8 +71,10 @@ function quotedPrintable(s: string): string {
 
 function jsString(s: string): string {
   let out = "";
-  for (const ch of s) {
-    const c = ch.charCodeAt(0);
+  // iterate UTF-16 code units so astral chars emit a surrogate-pair \uXXXX\uXXXX
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i]!;
+    const c = s.charCodeAt(i);
     if (c < 0x20 || c > 0x7e || ch === "\\" || ch === '"' || ch === "'")
       out += "\\u" + c.toString(16).padStart(4, "0");
     else out += ch;
@@ -99,10 +101,8 @@ export const encodeTags: TagDef[] = [
   tag("Encode", "sql_hex", "SQL hex literal (0x...)", (s) =>
     "0x" + bytesToHex(enc(s)),
   ),
-  tag("Encode", "ascii2hex", "ASCII to hex", (s, a) =>
-    bytesToHex(enc(s), String(a[0] ?? "")),
-    { args: [arg("separator", "string", "")] },
-  ),
+  // NOTE: `ascii2hex` / `hex2ascii` live in tags/convert.ts (category "Convert")
+  // to avoid duplicate registry entries.
   tag("Encode", "html_entities", "Named HTML entities", (s) => htmlEntities(s)),
   tag("Encode", "html5_entities", "Numeric HTML5 entities", (s) =>
     html5Entities(s),
@@ -163,10 +163,10 @@ export const encodeTags: TagDef[] = [
   ),
   tag("Encode", "js_string", "JavaScript string escaping", (s) => jsString(s)),
   tag("Encode", "powershell", "PowerShell -EncodedCommand (UTF-16LE base64)", (s) => {
-    // UTF-16LE then base64
+    // UTF-16LE then base64 — iterate code units so astral chars keep both halves
     const bytes: number[] = [];
-    for (const ch of s) {
-      const c = ch.charCodeAt(0);
+    for (let i = 0; i < s.length; i++) {
+      const c = s.charCodeAt(i);
       bytes.push(c & 0xff, (c >> 8) & 0xff);
     }
     return bytesToBase64(Uint8Array.from(bytes));

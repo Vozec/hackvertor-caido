@@ -1,6 +1,11 @@
 import type { RequestContext, TagDef } from "../types";
 import { arg, tag } from "./define";
 
+/** Escape regex metacharacters so a header/param name is matched literally. */
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 function header(ctx: RequestContext | undefined, name: string): string {
   if (!ctx) return "";
   if (ctx.headers) {
@@ -11,7 +16,7 @@ function header(ctx: RequestContext | undefined, name: string): string {
   }
   // fall back to scanning the raw request
   if (ctx.raw) {
-    const re = new RegExp(`^${name}:\\s*(.*)$`, "im");
+    const re = new RegExp(`^${escapeRegExp(name)}:\\s*(.*)$`, "im");
     const m = re.exec(ctx.raw);
     if (m) return m[1]!.trim();
   }
@@ -20,7 +25,7 @@ function header(ctx: RequestContext | undefined, name: string): string {
 
 function param(ctx: RequestContext | undefined, name: string): string {
   if (!ctx?.raw) return "";
-  const re = new RegExp(`[?&]${name}=([^&\\s]*)`);
+  const re = new RegExp(`[?&]${escapeRegExp(name)}=([^&\\s]*)`);
   const m = re.exec(ctx.raw);
   return m ? m[1]! : "";
 }
@@ -39,12 +44,19 @@ export const contextTags: TagDef[] = [
     (_s, a, ctx) => {
       const r = ctx.request;
       if (!r) return "";
-      return String(a[0])
-        .replace(/\$protocol/g, r.protocol ?? "")
-        .replace(/\$host/g, r.host ?? "")
-        .replace(/\$path/g, r.path ?? "")
-        .replace(/\$query/g, r.query ?? "")
-        .replace(/\$port/g, r.port != null ? String(r.port) : "");
+      // single-pass replacement so a substituted value containing "$path" etc.
+      // is not itself re-substituted
+      const map: Record<string, string> = {
+        $protocol: r.protocol ?? "",
+        $host: r.host ?? "",
+        $path: r.path ?? "",
+        $query: r.query ?? "",
+        $port: r.port != null ? String(r.port) : "",
+      };
+      return String(a[0]).replace(
+        /\$protocol|\$host|\$path|\$query|\$port/g,
+        (t) => map[t] ?? t,
+      );
     },
     {
       hasInput: false,
